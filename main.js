@@ -6,6 +6,7 @@ class Block{
         this.content.index = index;
         this.content.timestamp = timestamp;
         this.content.data = data;
+        this.content.nonce = 0;
         this.content.previousHash = previousHash;
         
         this.hash = '';
@@ -14,17 +15,32 @@ class Block{
     calculateHash(){
         return SHA256(JSON.stringify(this.content)).toString();
     }
+
+    mineBlock(difficulty){
+        let startTime = new Date().getTime();
+        
+        do{
+            this.content.nonce++;
+            this.hash = this.calculateHash();
+        }while(this.hash.substring(0, difficulty) != Array(difficulty+1).join("0"));
+
+        let endTime = new Date().getTime();
+
+        console.log("Block mined: " + this.hash + " in " + ((endTime-startTime)/1000) + " seconds.");
+    }
 }
 
 class Blockchain{
     constructor(){
         this.chain = [];
+        this.difficulty=2;
         this.createGenesisBlock();
     }
 
     createGenesisBlock(){
         let genesis = new Block(0, "01/01/2023", "Genesis Block", "0");
-        genesis.hash = genesis.calculateHash();
+        console.log("Mining Genesis Block...");
+        genesis.mineBlock(this.difficulty);
         this.chain.push(genesis);
     }
 
@@ -34,7 +50,7 @@ class Blockchain{
 
     addBlock(newBlock){
         newBlock.content.previousHash = this.getLatestBlock().hash;
-        newBlock.hash = newBlock.calculateHash();
+        newBlock.mineBlock(this.difficulty);
         this.chain.push(newBlock);
     }
 
@@ -56,8 +72,13 @@ function testaConsistenciaBlockchain(){
     
     let myNewCoin = new Blockchain();
     
+    console.log("Mining Block 1...");
     myNewCoin.addBlock( new Block(1, "02/02/2023", {ammount: 5} ));
+
+    console.log("Mining Block 2...");
     myNewCoin.addBlock( new Block(2, "03/02/2023", {ammount: 10} ));
+
+    console.log("Mining Block 3...");
     myNewCoin.addBlock( new Block(3, "04/02/2023", {ammount: 7} ));
     
     
