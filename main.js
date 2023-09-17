@@ -1,4 +1,6 @@
 const SHA256 = require("crypto-js/sha256");
+const EC = require('elliptic').ec;
+const ec = new EC('secp256k1');
 
 var configs = {
     showNonce: true,
@@ -13,6 +15,31 @@ class Transaction{
         this.fromAddress = fromAddress;
         this.toAddress = toAddress;
         this.ammount = ammount;
+    }
+
+    calculateHash(){
+        return SHA256(this.fromAddress + this.toAddress + this.ammount).toString();
+    }
+
+    signTransaction(signingKey){
+        if(signingKey.getPublic('hex') !== this.fromAddress){
+            throw new Error('You cannot sign transactions for other wallets!');
+        }
+
+        const hashTx = this.calculateHash();
+        const sig = signingKey.sign(hashTx, 'base64');
+        this.signature = sig.toDER('hex');
+    }
+
+    isValid(){
+        if(this.fromAddress === null) return true;
+
+        if(!this.signature || this.signature.length === 0){
+            throw new Error('No signature in this transaction');
+        }
+
+        const publicKey = ec.keyFromPublic(this.fromAddress, 'hex');
+        return publicKey.verify(this.calculateHash(), this.signature);
     }
 }
 
@@ -47,6 +74,15 @@ class Block{
         let endTime = new Date().getTime();
 
         console.log("Block mined: " + this.hash + " in " + ((endTime-startTime)/1000) + " seconds.");
+    }
+
+    hasValidTransactions(){
+        for(const tx of this.content.transactions){
+            if(!tx.isValid)
+                return false;
+        }
+
+        return true;
     }
 }
 
@@ -102,20 +138,31 @@ class Blockchain{
     }
 
     minePendingTransactions(miningRewardAddress){
+        const rewardTX = new Transaction(null, miningRewardAddress, this.miningReward);
+        this.pedingTransacions.push(rewardTX);
+
+
         let block = new Block(Date.now(), this.pedingTransacions, this.getLatestBlock().hash); 
         block.mineBlock(this.difficulty);
 
         this.chain.push(block);
 
-        this.pedingTransacions = [
-            new Transaction(null, miningRewardAddress, this.miningReward)
-        ];
+        this.pedingTransacions = [];
 
         if(configs.autoAdjustDifficulty)
             this.adjustDifficulty();
     }
 
-    createTransaction(transaction){
+    addTransaction(transaction){
+
+        if(!transaction.fromAddress || !transaction.toAddress){
+            throw new Error('Transaction must include from and to address');
+        }
+
+        if(!transaction.isValid()){
+            throw new Error("Cannot add invalid transaction to chain.")
+        }
+
         this.pedingTransacions.push(transaction);
     }
 
@@ -139,6 +186,11 @@ class Blockchain{
 
     isChainValid(){
         for(let i = 1; i < this.chain.length; i++){
+
+            if(!this.chain[i].hasValidTransactions()){
+                return false;
+            }
+
             if(this.chain[i].content.previousHash != this.chain[i-1].calculateHash()){
                 return false;
             }
@@ -151,69 +203,5 @@ class Blockchain{
     }
 }
 
-function testaMineracaoContinua(timeBetweenBlocks){
-    let myNewCoin = new Blockchain();
-    myNewCoin.timeBetweenBlocks = timeBetweenBlocks;
-
-    while(1){
-        if(configs.showDifficulty)
-            console.log("Current difficulty: " + myNewCoin.difficulty);
-        myNewCoin.minePendingTransactions('xaviers-address');
-        console.log();
-    }
-}
-
-testaMineracaoContinua(10000);
-
-
-//######################################################
-
-function testaBlockchainComTransacoes(){
-    let myNewCoin = new Blockchain();
-
-    myNewCoin.createTransaction(new Transaction('address1', 'address2', 100));
-    myNewCoin.createTransaction(new Transaction('address2', 'address1', 50));
-
-    console.log("\n Starting the miner...");
-    myNewCoin.minePendingTransactions('xaviers-address');
-
-    console.log("\n Balance of xavier is ", myNewCoin.getBalanceOfAddress('xaviers-address'));
-    console.log("\n Balance of address1 is ", myNewCoin.getBalanceOfAddress('address1'));
-    console.log("\n Balance of address2 is ", myNewCoin.getBalanceOfAddress('address2'));
-
-    console.log("\n Starting the miner again...");
-    myNewCoin.minePendingTransactions('xaviers-address');
-
-    console.log("\n Balance of xavier is ", myNewCoin.getBalanceOfAddress('xaviers-address'));
-
-    console.log(JSON.stringify(myNewCoin.chain, null, 4));
-}
-//testaBlockchainComTransacoes();
-
-//#######################################################
-
-function testaConsistenciaBlockchain(){
-    
-    let myNewCoin = new Blockchain();
-    
-    console.log("Mining Block 1...");
-    myNewCoin.addBlock( new Block("02/02/2023", {ammount: 5} ));
-
-    console.log("Mining Block 2...");
-    myNewCoin.addBlock( new Block("03/02/2023", {ammount: 10} ));
-
-    console.log("Mining Block 3...");
-    myNewCoin.addBlock( new Block("04/02/2023", {ammount: 7} ));
-    
-    
-    console.log(JSON.stringify(myNewCoin.chain, null, 4));
-    console.log("A Blockchain é válida? " + myNewCoin.isChainValid());
-    
-    myNewCoin.chain[1].content.data = {amount: 50};
-    myNewCoin.chain[1].hash = myNewCoin.chain[1].calculateHash();
-    
-    console.log("A Blockchain é válida? " + myNewCoin.isChainValid());
-    console.log(JSON.stringify(myNewCoin.chain, null, 4));
-}
-
-//testaConsistenciaBlockchain();
+module.exports.Blockchain = Blockchain;
+module.exports.Transaction = Transaction;
