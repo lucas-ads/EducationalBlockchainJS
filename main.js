@@ -1,5 +1,13 @@
 const SHA256 = require("crypto-js/sha256");
 
+var configs = {
+    showNonce: true,
+    showNonceInterval: 50000, 
+    showDifficulty: true,
+    showAverageTime: true,
+    autoAdjustDifficulty: true
+};
+
 class Transaction{
     constructor(fromAddress, toAddress, ammount){
         this.fromAddress = fromAddress;
@@ -26,9 +34,14 @@ class Block{
     mineBlock(difficulty){
         let startTime = new Date().getTime();
         
+        this.content.difficultyMining = difficulty;
         do{
             this.content.nonce++;
             this.hash = this.calculateHash();
+
+            if(configs.showNonce && this.content.nonce % configs.showNonceInterval == 0){
+                console.log("Current nonce: " + this.content.nonce);
+            }
         }while(this.hash.substring(0, difficulty) != Array(difficulty+1).join("0"));
 
         let endTime = new Date().getTime();
@@ -40,7 +53,8 @@ class Block{
 class Blockchain{
     constructor(){
         this.chain = [];
-        this.difficulty=2;
+        this.timeBetweenBlocks=2000;
+        this.difficulty=4;
         this.createGenesisBlock();
 
         this.pedingTransacions = [];
@@ -48,7 +62,7 @@ class Blockchain{
     }
 
     createGenesisBlock(){
-        let genesis = new Block("01/01/2023", "Genesis Block", "0");
+        let genesis = new Block(Date.now(), "Genesis Block", "0");
         console.log("Mining Genesis Block...");
         genesis.mineBlock(this.difficulty);
         this.chain.push(genesis);
@@ -56,6 +70,35 @@ class Blockchain{
 
     getLatestBlock(){
         return this.chain[this.chain.length-1];
+    }
+
+    adjustDifficulty(){
+        let length = this.chain.length;
+        if(length>=4){
+
+            let averageTime = Date.now() - this.chain[length-1].content.timestamp;
+            let difficulty = this.chain[length-1].content.difficultyMining;
+
+            for(let i = length-1; i > length-4; i--){
+                averageTime += (this.chain[i].content.timestamp - this.chain[i-1].content.timestamp);
+                difficulty += this.chain[i-1].content.difficultyMining;
+            }
+
+            if(difficulty/4 != this.difficulty)
+                return;
+            
+            averageTime = averageTime/4;
+            
+            if(configs.showAverageTime)
+                console.log("\nMédia de tempo entre os 4 últimos blocos: " + averageTime);
+
+            if(averageTime > this.timeBetweenBlocks * 1.33){
+                this.difficulty--;
+            }else if(averageTime < this.timeBetweenBlocks * 0.75){
+                this.difficulty++;
+            }
+        }
+
     }
 
     minePendingTransactions(miningRewardAddress){
@@ -67,6 +110,9 @@ class Blockchain{
         this.pedingTransacions = [
             new Transaction(null, miningRewardAddress, this.miningReward)
         ];
+
+        if(configs.autoAdjustDifficulty)
+            this.adjustDifficulty();
     }
 
     createTransaction(transaction){
@@ -105,6 +151,23 @@ class Blockchain{
     }
 }
 
+function testaMineracaoContinua(timeBetweenBlocks){
+    let myNewCoin = new Blockchain();
+    myNewCoin.timeBetweenBlocks = timeBetweenBlocks;
+
+    while(1){
+        if(configs.showDifficulty)
+            console.log("Current difficulty: " + myNewCoin.difficulty);
+        myNewCoin.minePendingTransactions('xaviers-address');
+        console.log();
+    }
+}
+
+testaMineracaoContinua(10000);
+
+
+//######################################################
+
 function testaBlockchainComTransacoes(){
     let myNewCoin = new Blockchain();
 
@@ -125,8 +188,7 @@ function testaBlockchainComTransacoes(){
 
     console.log(JSON.stringify(myNewCoin.chain, null, 4));
 }
-
-testaBlockchainComTransacoes();
+//testaBlockchainComTransacoes();
 
 //#######################################################
 
